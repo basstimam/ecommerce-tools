@@ -1,0 +1,82 @@
+.popup-container {
+  padding: 24px;
+  width: 300px;
+  height: 500px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1a1a1a;
+}
+
+.form-group {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #4a5568;
+}
+
+.input-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.currency-symbol {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #718096;
+  z-index: 1;
+}
+
+.salary-input {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.salary-input:focus {
+  border-color: #4299e1;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 10px;
+  background-color: #4299e1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submit-button:hover {
+  background-color: #3182ce;
+}
+
+.saved-salary {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background-color: #EDF2F7;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #4A5568;
+} 

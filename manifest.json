@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Salary Input Extension",
+  "version": "1.0.0",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.ts"
+  },
+  "host_permissions": [
+    "https://www.tokopedia.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.tsx"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.tokopedia.com/*"],
+      "js": ["content.ts"]
+    }
+  ]
+} 
