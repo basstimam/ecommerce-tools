@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card"
 import { SalaryInput } from "./components/SalaryInput"
 import { useSalary } from "./hooks/useSalary"
+import "./globals.css"
 import "./style.css"
 
 function IndexPopup() {
