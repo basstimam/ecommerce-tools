@@ -25,26 +25,15 @@
 - Plasmo
 
 ## Installation Guide
-
-1. Clone this repository
-
-
-2. Install dependencies
-```bash
-npm install
-```
-
-3. Build extension
-```bash
-npm run build
-```
-
-4. How to install in browser:
-   - Open Chrome/Edge
+1. How to install with released package:
+   - Download the latest `.zip` file from the [releases page](https://github.com/basstimam/ecommerce-tools/releases)
+   - Extract the downloaded `.zip` file
+   - Open Chrome/Edge browser
    - Go to extensions page (chrome://extensions)
    - Enable "Developer mode"
    - Click "Load unpacked"
-   - Select the `dist` folder from this project
+   - Select the extracted folder
+
 
 ## Development
 
