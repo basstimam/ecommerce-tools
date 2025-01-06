@@ -28,7 +28,7 @@
 
 1. Clone this repository
 ```bash
-git clone [repository-url]
+git clone [[repository-url](https://github.com/basstimam/ecommerce-tools.git)]
 ```
 
 2. Install dependencies
