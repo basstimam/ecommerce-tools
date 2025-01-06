@@ -1,33 +1,75 @@
-This is a [Plasmo extension](https://docs.plasmo.com/) project bootstrapped with [`plasmo init`](https://www.npmjs.com/package/plasmo).
+# Ecommerce Tools Extension
+🛍️ A browser extension that helps users shop online with various utility features. ✨
 
-## Getting Started
+![Screenshot](./assets/screenshots/ss1.png)
 
-First, run the development server:
 
+![Screenshot](./assets/screenshots/ss2.png)
+
+
+## Website Supports
+
+- Tokopedia
+
+## Features
+
+- Salary Calculator: Helps calculate what percentage of salary will be used for shopping
+- Coming Soon!
+
+## Tech Stack
+
+- React + TypeScript
+- Tailwind CSS
+- Shadcn/ui
+- Chrome Extension API
+- Plasmo
+
+## Installation Guide
+
+1. Clone this repository
 ```bash
-pnpm dev
-# or
-npm run dev
+git clone [repository-url]
 ```
 
-Open your browser and load the appropriate development build. For example, if you are developing for the chrome browser, using manifest v3, use: `build/chrome-mv3-dev`.
-
-You can start editing the popup by modifying `popup.tsx`. It should auto-update as you make changes. To add an options page, simply add a `options.tsx` file to the root of the project, with a react component default exported. Likewise to add a content page, add a `content.ts` file to the root of the project, importing some module and do some logic, then reload the extension on your browser.
-
-For further guidance, [visit our Documentation](https://docs.plasmo.com/)
-
-## Making production build
-
-Run the following:
-
+2. Install dependencies
 ```bash
-pnpm build
-# or
+npm install
+```
+
+3. Build extension
+```bash
 npm run build
 ```
 
-This should create a production bundle for your extension, ready to be zipped and published to the stores.
+4. How to install in browser:
+   - Open Chrome/Edge
+   - Go to extensions page (chrome://extensions)
+   - Enable "Developer mode"
+   - Click "Load unpacked"
+   - Select the `dist` folder from this project
 
-## Submit to the webstores
+## Development
 
-The easiest way to deploy your Plasmo extension is to use the built-in [bpp](https://bpp.browser.market) GitHub action. Prior to using this action however, make sure to build your extension and upload the first version to the store to establish the basic credentials. Then, simply follow [this setup instruction](https://docs.plasmo.com/framework/workflows/submit) and you should be on your way for automated submission!
+For development mode:
+```bash
+npm run dev
+```
+
+## Project Structure
+
+```
+├── src/
+│   ├── components/     # React Components
+│   ├── hooks/         # Custom React hooks
+│   ├── lib/           # Utilities and helpers
+│   ├── popup.tsx      # Main extension popup
+│   └── content.ts     # Content script
+```
+
+## Contributing
+
+Please create a pull request to contribute. For major changes, please open an issue first to discuss the desired changes.
+
+## License
+
+[MIT License](LICENSE)

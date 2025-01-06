@@ -20,14 +20,17 @@ function formatRupiah(angka: number): string {
   }).format(angka)
 }
 
-function calculateWorkDays(salary: number, price: number): {
-  workDays: number
+function calculateWorkDays(salary: number, price: number, includePPN: boolean = false): {
+  workDays: number,
+  totalPrice: number
 } {
-  const dailySalaryWork = salary / 30
-  const workDays = Math.ceil(price / dailySalaryWork)
+  const dailySalaryWork = salary / 25
+  const priceWithPPN = includePPN ? price * 1.12 : price
+  const workDays = Math.ceil(priceWithPPN / dailySalaryWork)
 
   return {
-    workDays
+    workDays,
+    totalPrice: priceWithPPN
   }
 }
 
@@ -199,10 +202,19 @@ async function updateWorkDaysInfo(salary: number) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "UPDATE_SALARY" && message.salary) {
-    updateWorkDaysInfo(message.salary)
-    updateAllWorkDaysInfo(message.salary)
-    sendResponse({ success: true })
+  if (message.type === "UPDATE_SALARY") {
+    const elements = document.querySelectorAll("[data-price]")
+    elements.forEach((element) => {
+      const price = parseFloat(element.getAttribute("data-price") || "0")
+      const { workDays, totalPrice } = calculateWorkDays(message.salary, price, message.includePPN)
+      
+      const formattedPrice = new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR"
+      }).format(totalPrice)
+
+      element.textContent = `${workDays} hari kerja (${formattedPrice})`
+    })
   }
 })
 
