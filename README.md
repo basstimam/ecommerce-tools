@@ -13,7 +13,7 @@
 
 ## Features
 
-- Salary Calculator: Helps calculate what percentage of salary will be used for shopping
+- Salary Day To Work Converter : Convert your salary to working days needed to buy items on Ecommerce.
 - Coming Soon!
 
 ## Tech Stack
