@@ -1,8 +1,11 @@
 import type { PlasmoCSConfig } from "plasmo"
+import { Storage } from "@plasmohq/storage"
 
 export const config: PlasmoCSConfig = {
   matches: ["https://www.tokopedia.com/*"]
 }
+
+const storage = new Storage()
 
 let currentSalary = 0
 
@@ -219,6 +222,103 @@ const debouncedUpdate = debounce((salary: number) => {
   updateAllWorkDaysInfo(salary)
 }, 250)
 
+async function initializeAutoConvert() {
+  try {
+    const savedSalary = await storage.get("salary")
+    if (savedSalary) {
+      currentSalary = parseInt(savedSalary.replace(/\D/g, ""))
+      
+      // Fungsi untuk mencoba update dengan retry
+      const tryUpdate = async (retryCount = 0, maxRetries = 5) => {
+        try {
+          const priceElements = await findAllPriceElements()
+          const singlePriceElement = await findPriceElement()
+          
+          if ((priceElements && priceElements.length > 0) || singlePriceElement) {
+            await Promise.all([
+              updateWorkDaysInfo(currentSalary),
+              updateAllWorkDaysInfo(currentSalary)
+            ])
+            return true
+          } else if (retryCount < maxRetries) {
+            // Tunggu 1 detik sebelum mencoba lagi
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            return tryUpdate(retryCount + 1, maxRetries)
+          }
+          return false
+        } catch (error) {
+          console.error("Error in tryUpdate:", error)
+          return false
+        }
+      }
+
+      // Mulai proses update dengan retry
+      await tryUpdate()
+
+      // Set interval untuk mengecek dan memperbarui konversi setiap 2 detik
+      setInterval(async () => {
+        const priceElements = await findAllPriceElements()
+        const singlePriceElement = await findPriceElement()
+        
+        if ((priceElements && priceElements.length > 0) || singlePriceElement) {
+          if (!document.querySelector('.work-days-info')) {
+            await Promise.all([
+              updateWorkDaysInfo(currentSalary),
+              updateAllWorkDaysInfo(currentSalary)
+            ])
+          }
+        }
+      }, 2000)
+    }
+  } catch (error) {
+    console.error("Error initializing auto-convert:", error)
+  }
+}
+
+// Inisialisasi saat halaman dimuat
+window.addEventListener("load", initializeAutoConvert)
+
+// Inisialisasi juga saat DOM ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeAutoConvert)
+} else {
+  initializeAutoConvert()
+}
+
+// Tambahkan event listener untuk history changes (untuk SPA navigation)
+window.addEventListener('popstate', initializeAutoConvert)
+
+// Listen for storage changes dengan retry
+storage.watch({
+  salary: async (change) => {
+    const newValue = change.newValue as string
+    if (newValue) {
+      currentSalary = parseInt(newValue.replace(/\D/g, ""))
+      
+      // Retry mechanism untuk storage changes
+      const tryUpdate = async (retryCount = 0, maxRetries = 3) => {
+        try {
+          await Promise.all([
+            updateWorkDaysInfo(currentSalary),
+            updateAllWorkDaysInfo(currentSalary)
+          ])
+          return true
+        } catch (error) {
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+            return tryUpdate(retryCount + 1, maxRetries)
+          }
+          console.error("Error updating after storage change:", error)
+          return false
+        }
+      }
+      
+      await tryUpdate()
+    }
+  }
+})
+
+// Observer untuk perubahan DOM
 const observer = new MutationObserver((mutations) => {
   const hasRelevantChanges = mutations.some(mutation => 
     Array.from(mutation.addedNodes).some(node => 
@@ -228,27 +328,12 @@ const observer = new MutationObserver((mutations) => {
     )
   )
   
-  if (hasRelevantChanges && chrome?.storage?.local) {
-    chrome.storage.local.get(['salary'], (result) => {
-      if (result.salary) {
-        debouncedUpdate(result.salary)
-      }
-    })
+  if (hasRelevantChanges && currentSalary > 0) {
+    debouncedUpdate(currentSalary)
   }
 })
 
 observer.observe(document.body, {
   childList: true,
   subtree: true
-})
-
-document.addEventListener('DOMContentLoaded', () => {
-  if (chrome?.storage?.local) {
-    chrome.storage.local.get(['salary'], (result) => {
-      if (result.salary) {
-        updateWorkDaysInfo(result.salary)
-        updateAllWorkDaysInfo(result.salary)
-      }
-    })
-  }
 }) 

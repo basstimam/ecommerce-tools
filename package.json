@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "@plasmohq/messaging": "^0.6.2",
-    "@shadcn/ui": "^0.0.4",
+    "@plasmohq/storage": "^1.13.0",
     "@radix-ui/react-label": "^2.0.0",
+    "@shadcn/ui": "^0.0.4",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "lucide-react": "^0.294.0",

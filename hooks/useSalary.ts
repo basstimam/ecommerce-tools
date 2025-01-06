@@ -1,9 +1,23 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Storage } from "@plasmohq/storage"
+
+const storage = new Storage()
 
 export function useSalary() {
   const [salary, setSalary] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Load saved salary when component mounts
+    const loadSavedSalary = async () => {
+      const savedSalary = await storage.get("salary")
+      if (savedSalary) {
+        setSalary(formatToIDR(savedSalary))
+      }
+    }
+    loadSavedSalary()
+  }, [])
 
   const formatToIDR = (value: string) => {
     const number = value.replace(/\D/g, "")
@@ -15,6 +29,9 @@ export function useSalary() {
       setIsSending(true)
       setError(null)
       const salaryNum = parseInt(value.replace(/\D/g, ""))
+      
+      // Save to storage
+      await storage.set("salary", value)
       
       if (chrome?.tabs) {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
