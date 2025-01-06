@@ -20,17 +20,16 @@ function formatRupiah(angka: number): string {
   }).format(angka)
 }
 
-function calculateWorkDays(salary: number, price: number, includePPN: boolean = false): {
+function calculateWorkDays(salary: number, price: number): {
   workDays: number,
   totalPrice: number
 } {
   const dailySalaryWork = salary / 25
-  const priceWithPPN = includePPN ? price * 1.12 : price
-  const workDays = Math.ceil(priceWithPPN / dailySalaryWork)
+  const workDays = Math.ceil(price / dailySalaryWork)
 
   return {
     workDays,
-    totalPrice: priceWithPPN
+    totalPrice: price
   }
 }
 
@@ -206,7 +205,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const elements = document.querySelectorAll("[data-price]")
     elements.forEach((element) => {
       const price = parseFloat(element.getAttribute("data-price") || "0")
-      const { workDays, totalPrice } = calculateWorkDays(message.salary, price, message.includePPN)
+      const { workDays, totalPrice } = calculateWorkDays(message.salary, price)
       
       const formattedPrice = new Intl.NumberFormat("id-ID", {
         style: "currency",

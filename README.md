@@ -25,7 +25,8 @@
 - Plasmo
 
 ## Installation Guide
-1. How to install with released package:
+
+### How to install with released package:
    - Download the latest `.zip` file from the [releases page](https://github.com/basstimam/ecommerce-tools/releases)
    - Extract the downloaded `.zip` file
    - Open Chrome/Edge browser
@@ -46,11 +47,11 @@ npm run dev
 
 ```
 ├── src/
-│   ├── components/     # React Components
-│   ├── hooks/         # Custom React hooks
-│   ├── lib/           # Utilities and helpers
-│   ├── popup.tsx      # Main extension popup
-│   └── content.ts     # Content script
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   ├── popup.tsx
+│   └── content.ts
 ```
 
 ## Contributing
