@@ -10,6 +10,7 @@
 ## Website Supports
 
 - Tokopedia
+- Shopee
 
 ## Features
 
