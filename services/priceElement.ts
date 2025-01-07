@@ -1,5 +1,5 @@
 import { PRICE_SELECTORS, LISTING_SELECTORS } from "../constants/selectors"
-import { PriceElement } from "../types"
+import type { PriceElement } from "../types"
 
 export const findPriceElement = async (): Promise<PriceElement | null> => {
   const allSelectors = [
