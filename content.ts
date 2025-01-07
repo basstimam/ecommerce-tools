@@ -2,7 +2,7 @@ import type { PlasmoCSConfig } from "plasmo"
 import { Storage } from "@plasmohq/storage"
 
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.tokopedia.com/*"]
+  matches: ["https://www.tokopedia.com/*", "https://shopee.co.id/*"]
 }
 
 const storage = new Storage()
@@ -10,7 +10,22 @@ const storage = new Storage()
 let currentSalary = 0
 
 function extractPrice(priceText: string): number {
-  return parseInt(priceText.replace(/[^0-9]/g, ""))
+  const cleanText = priceText.replace(/[^\d.,\-]/g, '')
+  
+  if (cleanText.includes('-')) {
+    const [_, maxPrice] = cleanText.split('-')
+    return extractPrice(maxPrice)
+  }
+  
+  if (cleanText.includes('.')) {
+    return parseInt(cleanText.replace(/\./g, ''))
+  }
+  
+  if (cleanText.includes(',')) {
+    return parseInt(cleanText.replace(/,/g, ''))
+  }
+  
+  return parseInt(cleanText) || 0
 }
 
 function formatRupiah(angka: number): string {
@@ -35,9 +50,20 @@ function calculateWorkDays(salary: number, price: number): {
 
 async function findPriceElement(): Promise<HTMLElement | null> {
   const selectors = [
+    // Home Tokopedia
     "/html/body/div[1]/div/div[2]/div[2]/div[4]/div/div[3]/div",
+
+    // Tokopedia Product Details
     "[data-testid='lblPDPDetailProductPrice']",
-    ".price"
+    ".price",
+
+    // Home Shopee
+    "/html/body/div[1]/div/div[2]/div/div/div/div/div[3]/div[2]/div[4]/div/div/div/div[2]/section/div/div[4]/div/div/a[1]/div/div[2]/div[3]/div[1]/div/span[2]",
+    ".font-medium.text-base\\/5.truncate",
+
+    // Shopee Product Details
+    "/html/body/div[1]/div/div[2]/div/div/div[1]/div/div[1]/div/div[2]/section[1]/section[2]/div/div[3]/div/section/div/div[1]",
+    ".IZPeQz.B67UQ0"
   ]
 
   for (const selector of selectors) {
@@ -71,7 +97,13 @@ async function findAllPriceElements(): Promise<HTMLElement[]> {
     "/html/body/div[1]/div/main/section[2]/div[2]/section/div[2]/div[1]/div/div[2]/div/div/div/div/div/div/div/div[2]/a/div[2]/div/div[1]",
     "/html/body/div[1]/div/main/section[3]/div/div/div[2]/div/div[1]/div/div[1]/div/div/div/div/div/div[2]/a/div[2]/div/div",
     ".prd_link-product-price",
-    ".css-h66vau"
+    ".css-h66vau",
+    // Shopee selectors
+    ".font-medium.text-base\\/5.truncate",
+    "/html/body/div[1]/div/div[2]/div/div/div/div/div[3]/div[2]/div[4]/div/div/div/div[2]/section/div/div[4]/div/div/a[1]/div/div[2]/div[3]/div[1]/div/span[2]",
+    // New Shopee selectors
+    ".IZPeQz.B67UQ0",
+    "/html/body/div[1]/div/div[2]/div/div/div[1]/div/div[1]/div/div[2]/section[1]/section[2]/div/div[3]/div/section/div/div[1]"
   ]
   
   let elements: HTMLElement[] = []
@@ -171,8 +203,14 @@ async function updateWorkDaysInfo(salary: number) {
 
   try {
     const priceElement = await findPriceElement()
-
     if (!priceElement) return
+
+    const isShopee = window.location.hostname.includes('shopee.co.id')
+    const isShopeeProductDetails = isShopee && window.location.pathname.includes('/product/')
+    
+    if (isShopeeProductDetails) {
+      return
+    }
 
     const priceText = priceElement.textContent || "0"
     const price = extractPrice(priceText)
@@ -180,20 +218,31 @@ async function updateWorkDaysInfo(salary: number) {
 
     const workDaysInfo = document.createElement("div")
     workDaysInfo.className = 'work-days-info'
+    workDaysInfo.innerHTML = `⏰ Perlu ${days.workDays} hari kerja untuk membeli ini`
     
-    workDaysInfo.style.marginTop = "12px"
-    workDaysInfo.style.padding = "10px"
-    workDaysInfo.style.backgroundColor = "#E8F5E9"
-    workDaysInfo.style.borderRadius = "8px"
-    workDaysInfo.style.border = "1px solid #03AC0E"
+    if (isShopee) {
+      workDaysInfo.style.cssText = `
+        margin-top: 4px;
+        padding: 2px 6px;
+        background-color: #E8F5E9;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #03AC0E;
+        font-weight: 500;
+        display: inline-block;
+        line-height: 16px;
+      `
+    } else {
+      workDaysInfo.style.marginTop = "12px"
+      workDaysInfo.style.padding = "10px"
+      workDaysInfo.style.backgroundColor = "#E8F5E9"
+      workDaysInfo.style.borderRadius = "8px"
+      workDaysInfo.style.border = "1px solid #03AC0E"
+      workDaysInfo.style.fontSize = "14px"
+      workDaysInfo.style.color = "#03AC0E"
+      workDaysInfo.style.fontWeight = "500"
+    }
     
-    const daysInfo = document.createElement("div")
-    daysInfo.style.fontSize = "14px"
-    daysInfo.style.color = "#03AC0E"
-    daysInfo.style.fontWeight = "500"
-    daysInfo.innerHTML = `⏰ Perlu ${days.workDays} hari kerja untuk membeli ini`
-    
-    workDaysInfo.appendChild(daysInfo)
     priceElement.parentNode.insertBefore(workDaysInfo, priceElement.nextSibling)
   } catch (error) {
     console.error("Error updating work days info:", error)
@@ -239,7 +288,6 @@ async function initializeAutoConvert() {
     if (savedSalary) {
       currentSalary = parseInt(savedSalary.replace(/\D/g, ""))
       
-      // Fungsi untuk mencoba update dengan retry
       const tryUpdate = async (retryCount = 0, maxRetries = 5) => {
         try {
           const priceElements = await findAllPriceElements()
@@ -252,7 +300,6 @@ async function initializeAutoConvert() {
             ])
             return true
           } else if (retryCount < maxRetries) {
-            // Tunggu 1 detik sebelum mencoba lagi
             await new Promise(resolve => setTimeout(resolve, 1000))
             return tryUpdate(retryCount + 1, maxRetries)
           }
@@ -263,10 +310,8 @@ async function initializeAutoConvert() {
         }
       }
 
-      // Mulai proses update dengan retry
       await tryUpdate()
 
-      // Set interval untuk mengecek dan memperbarui konversi setiap 2 detik
       setInterval(async () => {
         const priceElements = await findAllPriceElements()
         const singlePriceElement = await findPriceElement()
@@ -286,27 +331,27 @@ async function initializeAutoConvert() {
   }
 }
 
-// Inisialisasi saat halaman dimuat
+
 window.addEventListener("load", initializeAutoConvert)
 
-// Inisialisasi juga saat DOM ready
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initializeAutoConvert)
 } else {
   initializeAutoConvert()
 }
 
-// Tambahkan event listener untuk history changes (untuk SPA navigation)
+// SPA navigation
 window.addEventListener('popstate', initializeAutoConvert)
 
-// Listen for storage changes dengan retry
+// Storage changes
 storage.watch({
   salary: async (change) => {
     const newValue = change.newValue as string
     if (newValue) {
       currentSalary = parseInt(newValue.replace(/\D/g, ""))
       
-      // Retry mechanism untuk storage changes
+   
       const tryUpdate = async (retryCount = 0, maxRetries = 3) => {
         try {
           await Promise.all([
