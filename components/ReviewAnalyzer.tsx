@@ -1,12 +1,30 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { Stemmer, Tokenizer } from 'sastrawijs'
+import { Container } from '@nlpjs/core'
+import { SentimentAnalyzer } from '@nlpjs/sentiment'
+import { LangId } from '@nlpjs/lang-id'
+import { 
+  positiveWords, 
+  negativeWords, 
+  intensifiers, 
+  negations, 
+  bigramPhrases,
+  emojiSentiment 
+} from "../lib/sentimentDictionary"
 
 interface ReviewAnalysisResult {
   text: string
   kendala?: string
   score: number
   comparative: number
+  normalizedText?: string
+  tokens?: string[]
+  stems?: string[]
+  timestamp?: number
+  error?: string
+  contexts?: string[]
 }
 
 interface ReviewAnalyzerProps {
@@ -24,11 +42,325 @@ interface StoredState {
   totalPages?: number
 }
 
+interface StorageData {
+  [key: string]: {
+    timestamp?: number
+    text?: string
+    score?: number
+    comparative?: number
+    [key: string]: any
+  }
+}
+
 export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzerProps) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'negative'>('summary')
   const [isInitialized, setIsInitialized] = useState<boolean>(false)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [totalPages, setTotalPages] = useState<number>(0)
+  const [stemmer] = useState<Stemmer>(() => new Stemmer())
+  const [tokenizer] = useState<Tokenizer>(() => new Tokenizer())
+  const [stemCache] = useState<Map<string, string>>(() => new Map())
+  const [loadedNegativeReviews, setLoadedNegativeReviews] = useState<ReviewAnalysisResult[]>([])
+  const batchSize = 10
+  const [nlpContainer] = useState(() => {
+    const container = new Container()
+    container.use(LangId)
+    container.use(SentimentAnalyzer)
+    return container
+  })
+
+  // Optimisasi stemming dengan memoization
+  const optimizedStem = (word: string) => {
+    const lowercased = word.toLowerCase()
+    if (stemCache.has(lowercased)) {
+      return stemCache.get(lowercased)
+    }
+    const stemmed = stemmer.stem(lowercased)
+    stemCache.set(lowercased, stemmed)
+    return stemmed
+  }
+
+  // Fungsi untuk ekstrak dan skor emoji
+  const extractEmojiSentiment = (text: string) => {
+    let score = 0
+    for (const [emoji, value] of Object.entries(emojiSentiment)) {
+      const regex = new RegExp(emoji, 'g')
+      const count = (text.match(regex) || []).length
+      score += count * value
+    }
+    return score
+  }
+
+  // Fungsi untuk normalisasi teks yang dioptimasi
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s\u{1F300}-\u{1F9FF}]/gu, '') // Pertahankan emoji
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  // Inisialisasi NLP
+  useEffect(() => {
+    const initializeNLP = async () => {
+      try {
+        await nlpContainer.train()
+        console.log('NLP container trained successfully')
+      } catch (error) {
+        console.error('Error training NLP container:', error)
+      }
+    }
+    initializeNLP()
+  }, [nlpContainer])
+
+  // Modifikasi fungsi analyzeText untuk menggunakan NLP.js
+  const analyzeText = async (text: string) => {
+    try {
+      if (!text || typeof text !== 'string') {
+        throw new Error('Invalid text input')
+      }
+
+      // Cek cache
+      const cacheKey = `review_${text}`
+      const cached = await chrome.storage.local.get(cacheKey)
+      if (cached[cacheKey]) {
+        return cached[cacheKey]
+      }
+
+      const normalizedText = normalizeText(text)
+      const emojiScore = extractEmojiSentiment(text)
+      
+      // Tokenisasi menggunakan sastrawijs
+      const tokens = tokenizer.tokenize(normalizedText)
+      const stems = tokens.map(optimizedStem)
+
+      // Analisis sentimen menggunakan NLP.js
+      const nlpResult = await nlpContainer.process('id', normalizedText)
+      const nlpScore = nlpResult.sentiment.score || 0
+      
+      // Kombinasikan skor dari NLP.js dengan skor emoji dan analisis tambahan
+      const sentimentResult = calculateSentimentScore(stems)
+      const combinedScore = (nlpScore + sentimentResult.score + emojiScore) / 3
+      const finalComparative = combinedScore / (stems.length || 1)
+
+      const result: ReviewAnalysisResult = {
+        text,
+        normalizedText,
+        tokens,
+        stems,
+        score: combinedScore,
+        comparative: finalComparative,
+        contexts: sentimentResult.contexts,
+        timestamp: Date.now()
+      }
+
+      // Simpan ke cache
+      await chrome.storage.local.set({ [cacheKey]: result })
+
+      return result
+    } catch (error) {
+      console.error('Gagal menganalisis teks:', error)
+      return {
+        text,
+        score: 0,
+        comparative: 0,
+        error: error.message,
+        timestamp: Date.now()
+      }
+    }
+  }
+
+  // Fungsi untuk menghitung skor sentimen yang dioptimasi
+  const calculateSentimentScore = (stems: string[]) => {
+    let score = 0
+    let hasNegation = false
+    let hasIntensifier = false
+    let contextMultiplier = 1
+
+    // Deteksi konteks utama
+    const contexts = {
+      product: false,    // Konteks kualitas produk
+      service: false,    // Konteks pelayanan
+      shipping: false,   // Konteks pengiriman
+      price: false,      // Konteks harga
+      packaging: false   // Konteks packaging
+    }
+
+    // Kata kunci untuk mendeteksi konteks
+    const contextKeywords = {
+      product: ['produk', 'barang', 'item', 'kualitas', 'original', 'asli', 'berfungsi'],
+      service: ['pelayanan', 'respon', 'cs', 'admin', 'penjual', 'seller', 'toko'],
+      shipping: ['kirim', 'sampai', 'paket', 'ekspedisi', 'kurir', 'pengiriman'],
+      price: ['harga', 'mahal', 'murah', 'worth', 'sebanding'],
+      packaging: ['packing', 'bungkus', 'pembungkus', 'bubble', 'wrap']
+    }
+
+    // Deteksi konteks dari stems
+    for (const stem of stems) {
+      for (const [context, keywords] of Object.entries(contextKeywords)) {
+        if (keywords.includes(stem)) {
+          contexts[context] = true
+          break
+        }
+      }
+    }
+
+    // Hitung jumlah konteks yang terdeteksi
+    const activeContexts = Object.values(contexts).filter(Boolean).length
+
+    for (let i = 0; i < stems.length; i++) {
+      const stem = stems[i]
+      const nextStem = stems[i + 1]
+      
+      // Cek bigram
+      const bigram = stem + ' ' + (nextStem || '')
+      if (bigramPhrases[bigram] !== undefined) {
+        // Berikan bobot lebih untuk frasa yang sesuai konteks
+        let phraseScore = bigramPhrases[bigram]
+        if (
+          (contexts.shipping && bigram.includes('sampai')) ||
+          (contexts.service && bigram.includes('respon')) ||
+          (contexts.product && (bigram.includes('original') || bigram.includes('asli'))) ||
+          (contexts.packaging && bigram.includes('packing'))
+        ) {
+          phraseScore *= 1.2 // Tingkatkan bobot 20% untuk frasa yang sesuai konteks
+        }
+        score += phraseScore
+        i++ // Skip kata berikutnya
+        continue
+      }
+
+      // Cek kata tunggal
+      let wordScore = 0
+      if (positiveWords.has(stem)) {
+        wordScore = 1
+      } else if (negativeWords.has(stem)) {
+        wordScore = -1
+      }
+
+      // Sesuaikan skor berdasarkan konteks
+      if (wordScore !== 0) {
+        // Jika kata sesuai dengan konteks yang terdeteksi, berikan bobot lebih
+        if (
+          (contexts.product && contextKeywords.product.includes(stem)) ||
+          (contexts.service && contextKeywords.service.includes(stem)) ||
+          (contexts.shipping && contextKeywords.shipping.includes(stem)) ||
+          (contexts.price && contextKeywords.price.includes(stem)) ||
+          (contexts.packaging && contextKeywords.packaging.includes(stem))
+        ) {
+          wordScore *= 1.2 // Tingkatkan bobot 20% untuk kata yang sesuai konteks
+        }
+        score += wordScore
+      }
+
+      // Cek negasi dan intensifier
+      if (i > 0) {
+        const prevStem = stems[i - 1]
+        if (negations.has(prevStem)) {
+          hasNegation = true
+          // Negasi memiliki efek yang lebih kuat pada konteks yang spesifik
+          contextMultiplier = activeContexts > 0 ? -1.3 : -1.2
+        }
+        if (intensifiers.has(prevStem)) {
+          hasIntensifier = true
+          // Intensifier memiliki efek yang lebih kuat pada konteks yang spesifik
+          contextMultiplier = activeContexts > 0 ? 1.3 : 1.1
+        }
+      }
+    }
+
+    // Sesuaikan skor akhir berdasarkan konteks dan modifier
+    let finalScore = score * contextMultiplier
+
+    // Normalisasi berdasarkan panjang teks dan jumlah konteks
+    const normalizedScore = finalScore / (stems.length || 1)
+    
+    // Sesuaikan skor komparatif berdasarkan konteks
+    let comparativeScore = normalizedScore
+    if (activeContexts > 0) {
+      // Berikan bobot lebih untuk review yang membahas banyak aspek
+      comparativeScore *= (1 + (activeContexts * 0.1))
+    }
+    
+    return {
+      score: finalScore,
+      comparative: comparativeScore,
+      contexts: Object.entries(contexts)
+        .filter(([_, active]) => active)
+        .map(([context]) => context)
+    }
+  }
+
+  // Batching analysis dengan optimisasi
+  const handleAnalyze = async () => {
+    try {
+      const batches = []
+      for (let i = 0; i < results.length; i += batchSize) {
+        batches.push(results.slice(i, i + batchSize))
+      }
+
+      let analyzedResults = []
+      for (const batch of batches) {
+        const batchResults = await Promise.all(
+          batch.map(async (result) => {
+            const nlpResult = await analyzeText(result.text)
+            return nlpResult ? { ...result, ...nlpResult } : result
+          })
+        )
+        analyzedResults = [...analyzedResults, ...batchResults]
+        
+        // Update progress
+        console.log(`Analyzed ${analyzedResults.length}/${results.length} reviews`)
+      }
+
+      saveStateToStorage({ 
+        results: analyzedResults,
+        isAnalyzing: false
+      })
+    } catch (error) {
+      console.error('Gagal menganalisis reviews:', error)
+    }
+  }
+
+  // Lazy loading untuk review negatif
+  useEffect(() => {
+    if (activeTab === 'negative') {
+      const negativeReviews = results
+        .filter(r => r.score < 0)
+        .sort((a, b) => a.score - b.score)
+      setLoadedNegativeReviews(negativeReviews)
+    }
+  }, [activeTab, results])
+
+  // Cleanup cache
+  useEffect(() => {
+    return () => {
+      const cleanupCache = async () => {
+        try {
+          const storage = await chrome.storage.local.get()
+          const cacheItems = storage as StorageData
+          const oneDay = 24 * 60 * 60 * 1000
+          const now = Date.now()
+
+          const keysToRemove = Object.entries(cacheItems)
+            .filter(([key, value]) => {
+              return key.startsWith('review_') && 
+                value?.timestamp && 
+                now - value.timestamp > oneDay
+            })
+            .map(([key]) => key)
+
+          if (keysToRemove.length > 0) {
+            await chrome.storage.local.remove(keysToRemove)
+            console.log(`Cleaned up ${keysToRemove.length} cached items`)
+          }
+        } catch (error) {
+          console.error('Error cleaning up cache:', error)
+        }
+      }
+      cleanupCache()
+    }
+  }, [])
 
   // Fungsi untuk mencoba melanjutkan scraping
   const attemptContinueScraping = async () => {
@@ -208,14 +540,11 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
     return "text-gray-600"
   }
 
-  const negativeReviews = results.filter(r => r.score < 0)
-    .sort((a, b) => a.score - b.score)
-
   const analyzeProductRecommendation = () => {
     if (results.length === 0) return null
 
     const positiveCount = results.filter(r => r.score > 0).length
-    const negativeCount = negativeReviews.length
+    const negativeCount = loadedNegativeReviews.length
     const neutralCount = results.length - positiveCount - negativeCount
     const positivePercentage = (positiveCount / results.length) * 100
     const highPositiveCount = results.filter(r => r.score > 2).length
@@ -307,6 +636,62 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
 
   const recommendation = analyzeProductRecommendation()
 
+  // Modifikasi tampilan untuk menampilkan hasil analisis
+  const renderReviewDetail = (result: ReviewAnalysisResult) => (
+    <div className="p-3 bg-gray-50 rounded-lg">
+      <p className="text-sm text-gray-600">{result.text}</p>
+      {result.normalizedText && (
+        <p className="text-xs text-gray-500 mt-1">
+          <span className="font-medium">Normalisasi:</span> {result.normalizedText}
+        </p>
+      )}
+      {result.stems && result.stems.length > 0 && (
+        <p className="text-xs text-gray-500">
+          <span className="font-medium">Kata Dasar:</span> {result.stems.join(', ')}
+        </p>
+      )}
+      {result.contexts && result.contexts.length > 0 && (
+        <div className="flex gap-1 mt-1 flex-wrap">
+          {result.contexts.map((context, idx) => (
+            <span 
+              key={idx}
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                context === 'product' ? 'bg-blue-100 text-blue-700' :
+                context === 'service' ? 'bg-purple-100 text-purple-700' :
+                context === 'shipping' ? 'bg-green-100 text-green-700' :
+                context === 'price' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-gray-100 text-gray-700'
+              }`}
+            >
+              {context === 'product' ? '🏷️ Produk' :
+               context === 'service' ? '💬 Layanan' :
+               context === 'shipping' ? '🚚 Pengiriman' :
+               context === 'price' ? '💰 Harga' :
+               context === 'packaging' ? '📦 Kemasan' :
+               context}
+            </span>
+          ))}
+        </div>
+      )}
+      {result.kendala && (
+        <p className="text-sm text-red-600 mt-1">
+          <span className="font-medium">Kendala:</span> {result.kendala}
+        </p>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-lg">{getSentimentEmoji(result.score)}</span>
+        <span className={`text-sm font-medium ${getSentimentColor(result.score)}`}>
+          Score: {result.score.toFixed(2)}
+        </span>
+        {result.comparative && (
+          <span className="text-xs text-gray-500">
+            (Comparative: {result.comparative.toFixed(2)})
+          </span>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <Card className="w-full mt-4 bg-white shadow-sm">
       <CardHeader className="pb-2">
@@ -339,7 +724,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
                 onClick={() => setActiveTab('negative')}
                 className="flex-1"
               >
-                Review Negatif ({negativeReviews.length})
+                Review Negatif ({loadedNegativeReviews.length})
               </Button>
             </div>
 
@@ -434,7 +819,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
                   <div className="bg-red-50 p-4 rounded-lg">
                     <p className="text-sm text-red-800 font-medium">Review Negatif</p>
                     <p className="text-2xl font-bold text-red-600">
-                      {negativeReviews.length}
+                      {loadedNegativeReviews.length}
                     </p>
                   </div>
                 </div>
@@ -463,7 +848,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
               </div>
             ) : (
               <div className="space-y-3">
-                {negativeReviews.map((result, index) => (
+                {loadedNegativeReviews.map((result, index) => (
                   <div 
                     key={index}
                     className="p-4 bg-red-50 rounded-lg border border-red-100"
@@ -488,7 +873,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
                     </div>
                   </div>
                 ))}
-                {negativeReviews.length === 0 && (
+                {loadedNegativeReviews.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     Tidak ada review negatif ditemukan 🎉
                   </div>
