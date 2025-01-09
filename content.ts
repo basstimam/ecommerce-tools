@@ -400,6 +400,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ... existing code ...
 })
 
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeAutoConvert)
+} else {
+  initializeAutoConvert()
+}
 
-})
-
+window.addEventListener("load", initializeAutoConvert)
+window.addEventListener('popstate', initializeAutoConvert) 
