@@ -42,15 +42,11 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
     const positivePercentage = (positiveCount / results.length) * 100
     const highPositiveCount = results.filter(r => r.score > 2).length
     const highPositivePercentage = (highPositiveCount / results.length) * 100
-    
-    // Menghitung rasio positif vs negatif
     const positiveToNegativeRatio = negativeCount === 0 ? positiveCount : positiveCount / negativeCount
     
-    // Mengumpulkan pro dan kontra
     const pros: string[] = []
     const cons: string[] = []
 
-    // Analisis kendala yang sering muncul
     const kendalaMap = new Map<string, number>()
     results.forEach(review => {
       if (review.kendala) {
@@ -58,13 +54,11 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
       }
     })
 
-    // Menentukan kendala yang sering muncul (muncul lebih dari sekali)
     const commonIssues = Array.from(kendalaMap.entries())
       .filter(([_, count]) => count > 1)
       .sort((a, b) => b[1] - a[1])
       .map(([kendala]) => kendala)
 
-    // Menentukan pro dan kontra
     if (positiveToNegativeRatio >= 2) {
       pros.push("Review positif 2x lebih banyak dari negatif")
     }
@@ -96,11 +90,9 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
       }
     }
 
-    // Menentukan rekomendasi berdasarkan rasio dan persentase
     let recommendation: string
     let recommendationColor: string
     
-    // Logika rekomendasi baru berdasarkan rasio dan persentase
     if (positiveToNegativeRatio >= 3 || positivePercentage >= 80 || highPositivePercentage >= 30) {
       recommendation = "Sangat Direkomendasikan"
       recommendationColor = "text-green-600"

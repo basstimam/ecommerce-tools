@@ -331,9 +331,7 @@ async function initializeAutoConvert() {
   }
 }
 
-
 window.addEventListener("load", initializeAutoConvert)
-
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initializeAutoConvert)
@@ -341,17 +339,14 @@ if (document.readyState === "loading") {
   initializeAutoConvert()
 }
 
-// SPA navigation
 window.addEventListener('popstate', initializeAutoConvert)
 
-// Storage changes
 storage.watch({
   salary: async (change) => {
     const newValue = change.newValue as string
     if (newValue) {
       currentSalary = parseInt(newValue.replace(/\D/g, ""))
       
-   
       const tryUpdate = async (retryCount = 0, maxRetries = 3) => {
         try {
           await Promise.all([
@@ -374,7 +369,6 @@ storage.watch({
   }
 })
 
-// Observer untuk perubahan DOM
 const observer = new MutationObserver((mutations) => {
   const hasRelevantChanges = mutations.some(mutation => 
     Array.from(mutation.addedNodes).some(node => 
@@ -399,17 +393,15 @@ interface Review {
   kendala?: string
 }
 
-// Fungsi untuk mengambil review dari Tokopedia
 const scrapeReviews = async (): Promise<Review[]> => {
   const uniqueReviews = new Map<string, Review>()
   
-  // Mengambil review dan kendala
   const reviewSelectors = [
     'span[data-testid="lblItemUlasan"]',
     'div[data-testid="pdpFlexWrapperContainer"] p.css-1h7ch6e',
-    'div.css-1h7ch6e', // Selector alternatif untuk review
-    '.css-1k3im5k', // Selector untuk review di halaman produk
-    '.css-1h7ch6e-unf-heading' // Selector untuk review dengan format baru
+    'div.css-1h7ch6e',
+    '.css-1k3im5k',
+    '.css-1h7ch6e-unf-heading'
   ]
 
   for (const selector of reviewSelectors) {
@@ -417,14 +409,12 @@ const scrapeReviews = async (): Promise<Review[]> => {
     reviewElements.forEach((reviewElement) => {
       const reviewText = reviewElement.textContent?.trim()
       if (reviewText && !uniqueReviews.has(reviewText)) {
-        // Mencari elemen kendala terdekat
         const reviewContainer = reviewElement.closest('article') || 
                               reviewElement.closest('[data-testid="pdpFlexWrapperContainer"]') ||
                               reviewElement.closest('.css-1k3im5k')
         let kendala = ''
         
         if (reviewContainer) {
-          // Mencoba mencari kendala dengan berbagai selector
           const kendalaSelectors = [
             'p[data-unify="Typography"].css-zhjnk4-unf-heading',
             'div[data-testid="divKendala"] p',
@@ -441,7 +431,6 @@ const scrapeReviews = async (): Promise<Review[]> => {
             }
           }
 
-          // Jika tidak ditemukan dengan querySelector, coba dengan XPath
           if (!kendala) {
             const xpathResult = document.evaluate(
               './/p[contains(text(), "Kendala:")]',
@@ -468,7 +457,6 @@ const scrapeReviews = async (): Promise<Review[]> => {
   return Array.from(uniqueReviews.values())
 }
 
-// Fungsi untuk mengklik tombol next page
 const clickNextPage = async (): Promise<boolean> => {
   const nextButtonSelectors = [
     'button[aria-label="Laman berikutnya"]',
@@ -506,14 +494,11 @@ const clickNextPage = async (): Promise<boolean> => {
   return false
 }
 
-// Fungsi untuk mengklik tombol pagination
 const goToPage = async (pageNumber: number, currentPage: number): Promise<boolean> => {
-  // Jika halaman berikutnya, gunakan tombol next
   if (pageNumber === currentPage + 1) {
     return clickNextPage()
   }
 
-  // Jika tidak, coba klik nomor halaman langsung
   const buttons = document.querySelectorAll('button.css-bugrro-unf-pagination-item')
   let found = false
   buttons.forEach(button => {
@@ -529,9 +514,7 @@ const goToPage = async (pageNumber: number, currentPage: number): Promise<boolea
   return found
 }
 
-// Fungsi untuk mendapatkan total halaman
 const getTotalPages = (): number => {
-  // Coba dapatkan dari tombol pagination terakhir
   const paginationButtons = Array.from(document.querySelectorAll('button.css-bugrro-unf-pagination-item'))
   const lastPageButton = paginationButtons[paginationButtons.length - 1]
   if (lastPageButton?.textContent) {
@@ -539,21 +522,18 @@ const getTotalPages = (): number => {
     if (!isNaN(lastPage)) return lastPage
   }
 
-  // Coba dapatkan dari informasi total review
   const totalReviewElement = document.querySelector('[data-testid="lblTotalReview"]')
   if (totalReviewElement) {
     const totalReviewText = totalReviewElement.textContent || ''
     const totalReview = parseInt(totalReviewText.replace(/\D/g, ''))
     if (!isNaN(totalReview)) {
-      return Math.ceil(totalReview / 10) // 10 review per halaman
+      return Math.ceil(totalReview / 10)
     }
   }
 
-  // Default ke 10 halaman jika tidak bisa mendapatkan total
   return 10
 }
 
-// Fungsi utama untuk scraping semua review
 const scrapeAllReviews = async (): Promise<Review[]> => {
   const allReviews: Review[] = []
   const totalPages = getTotalPages()
@@ -562,7 +542,6 @@ const scrapeAllReviews = async (): Promise<Review[]> => {
   while (currentPage <= totalPages) {
     console.log(`Mengambil data dari halaman ${currentPage}...`)
     
-    // Tunggu hingga konten review dimuat
     await new Promise((resolve) => {
       const observer = new MutationObserver((mutationsList, observer) => {
         const reviewsLoaded = document.querySelectorAll('span[data-testid="lblItemUlasan"]').length > 0
@@ -583,7 +562,6 @@ const scrapeAllReviews = async (): Promise<Review[]> => {
     const pageReviews = await scrapeReviews()
     allReviews.push(...pageReviews)
 
-    // Cek apakah masih ada halaman berikutnya
     if (currentPage < totalPages) {
       const success = await goToPage(currentPage + 1, currentPage)
       if (!success) {
@@ -591,7 +569,6 @@ const scrapeAllReviews = async (): Promise<Review[]> => {
         break
       }
       currentPage++
-      // Tunggu sebentar sebelum ke halaman berikutnya
       await new Promise(resolve => setTimeout(resolve, 1500))
     } else {
       break
@@ -601,7 +578,6 @@ const scrapeAllReviews = async (): Promise<Review[]> => {
   return allReviews
 }
 
-// Menambahkan listener untuk pesan dari popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ANALYZE_REVIEWS") {
     scrapeAllReviews().then(reviews => {
