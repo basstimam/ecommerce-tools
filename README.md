@@ -3,8 +3,9 @@
 
 ![Screenshot](./assets/screenshots/ss1.png)
 
-
 ![Screenshot](./assets/screenshots/ss2.png)
+
+![Screenshot](./assets/screenshots/ss3.png)
 
 
 ## Website Supports
@@ -15,6 +16,7 @@
 ## Features
 
 - Salary Day To Work Converter : Convert your salary to working days needed to buy items on Ecommerce.
+- Review Analyzer : Analyze the review of the product and give you the sentiment score.
 - Coming Soon!
 
 ## Tech Stack
