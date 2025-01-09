@@ -142,7 +142,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-semibold flex items-center gap-2">
           <span role="img" aria-label="analysis" className="text-xl">📊</span>
-          Analisis Sentimen Review
+          Review Ulasan
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -151,7 +151,7 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
           disabled={isLoading}
           className="w-full mb-4 bg-primary hover:bg-primary/90 text-white"
         >
-          {isLoading ? "Menganalisis..." : "Analisis Review"}
+          {isLoading ? "Menganalisis..." : "Mulai Analisa"}
         </Button>
 
         {results.length > 0 && (

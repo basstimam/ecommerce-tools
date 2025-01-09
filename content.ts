@@ -404,49 +404,116 @@ const scrapeReviews = async (): Promise<Review[]> => {
   const uniqueReviews = new Map<string, Review>()
   
   // Mengambil review dan kendala
-  const reviewElements = document.querySelectorAll('span[data-testid="lblItemUlasan"]')
-  reviewElements.forEach((reviewElement) => {
-    const reviewText = reviewElement.textContent?.trim()
-    if (reviewText) {
-      // Mencari elemen kendala terdekat
-      const reviewContainer = reviewElement.closest('article')
-      let kendala = ''
-      
-      if (reviewContainer) {
-        // Mencoba mencari kendala dengan berbagai selector
-        const kendalaElement = reviewContainer.querySelector('p[data-unify="Typography"].css-zhjnk4-unf-heading') ||
-                              reviewContainer.querySelector('div[data-testid="divKendala"] p')
-        
-        // Jika tidak ditemukan dengan querySelector, coba dengan XPath
-        if (!kendalaElement) {
-          const xpathResult = document.evaluate(
-            './/p[contains(text(), "Kendala:")]',
-            reviewContainer,
-            null,
-            XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null
-          )
-          const xpathElement = xpathResult.singleNodeValue as HTMLElement
-          if (xpathElement) {
-            kendala = xpathElement.textContent?.replace('Kendala:', '').trim() || ''
-          }
-        } else {
-          kendala = kendalaElement.textContent?.replace('Kendala:', '').trim() || ''
-        }
-      }
+  const reviewSelectors = [
+    'span[data-testid="lblItemUlasan"]',
+    'div[data-testid="pdpFlexWrapperContainer"] p.css-1h7ch6e',
+    'div.css-1h7ch6e', // Selector alternatif untuk review
+    '.css-1k3im5k', // Selector untuk review di halaman produk
+    '.css-1h7ch6e-unf-heading' // Selector untuk review dengan format baru
+  ]
 
-      uniqueReviews.set(reviewText, {
-        text: reviewText,
-        kendala: kendala || undefined
-      })
-    }
-  })
+  for (const selector of reviewSelectors) {
+    const reviewElements = document.querySelectorAll(selector)
+    reviewElements.forEach((reviewElement) => {
+      const reviewText = reviewElement.textContent?.trim()
+      if (reviewText && !uniqueReviews.has(reviewText)) {
+        // Mencari elemen kendala terdekat
+        const reviewContainer = reviewElement.closest('article') || 
+                              reviewElement.closest('[data-testid="pdpFlexWrapperContainer"]') ||
+                              reviewElement.closest('.css-1k3im5k')
+        let kendala = ''
+        
+        if (reviewContainer) {
+          // Mencoba mencari kendala dengan berbagai selector
+          const kendalaSelectors = [
+            'p[data-unify="Typography"].css-zhjnk4-unf-heading',
+            'div[data-testid="divKendala"] p',
+            '.css-zhjnk4-unf-heading',
+            'p.css-zhjnk4',
+            'div[data-testid="divKendala"] span'
+          ]
+
+          for (const kendalaSelector of kendalaSelectors) {
+            const kendalaElement = reviewContainer.querySelector(kendalaSelector)
+            if (kendalaElement) {
+              kendala = kendalaElement.textContent?.replace('Kendala:', '').trim() || ''
+              break
+            }
+          }
+
+          // Jika tidak ditemukan dengan querySelector, coba dengan XPath
+          if (!kendala) {
+            const xpathResult = document.evaluate(
+              './/p[contains(text(), "Kendala:")]',
+              reviewContainer,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            )
+            const xpathElement = xpathResult.singleNodeValue as HTMLElement
+            if (xpathElement) {
+              kendala = xpathElement.textContent?.replace('Kendala:', '').trim() || ''
+            }
+          }
+        }
+
+        uniqueReviews.set(reviewText, {
+          text: reviewText,
+          kendala: kendala || undefined
+        })
+      }
+    })
+  }
 
   return Array.from(uniqueReviews.values())
 }
 
+// Fungsi untuk mengklik tombol next page
+const clickNextPage = async (): Promise<boolean> => {
+  const nextButtonSelectors = [
+    'button[aria-label="Laman berikutnya"]',
+    'button.css-16uzo3v-unf-pagination-item',
+    '.css-16uzo3v-unf-pagination-item',
+    '//button[contains(@class, "css-16uzo3v-unf-pagination-item")]'
+  ]
+
+  for (const selector of nextButtonSelectors) {
+    try {
+      let nextButton: HTMLElement | null = null
+      
+      if (selector.startsWith('//')) {
+        const result = document.evaluate(
+          selector,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        )
+        nextButton = result.singleNodeValue as HTMLElement
+      } else {
+        nextButton = document.querySelector(selector)
+      }
+
+      if (nextButton && !nextButton.hasAttribute('disabled')) {
+        (nextButton as HTMLButtonElement).click()
+        return true
+      }
+    } catch (error) {
+      console.log(`Error finding next button with selector ${selector}:`, error)
+    }
+  }
+  
+  return false
+}
+
 // Fungsi untuk mengklik tombol pagination
-const goToPage = async (pageNumber: number): Promise<void> => {
+const goToPage = async (pageNumber: number, currentPage: number): Promise<boolean> => {
+  // Jika halaman berikutnya, gunakan tombol next
+  if (pageNumber === currentPage + 1) {
+    return clickNextPage()
+  }
+
+  // Jika tidak, coba klik nomor halaman langsung
   const buttons = document.querySelectorAll('button.css-bugrro-unf-pagination-item')
   let found = false
   buttons.forEach(button => {
@@ -455,25 +522,45 @@ const goToPage = async (pageNumber: number): Promise<void> => {
       found = true
     }
   })
+
   if (!found) {
     console.error(`Tombol untuk halaman ${pageNumber} tidak ditemukan.`)
   }
+  return found
 }
 
 // Fungsi untuk mendapatkan total halaman
 const getTotalPages = (): number => {
-  const paginationButtons = document.querySelectorAll('button.css-bugrro-unf-pagination-item')
-  return paginationButtons.length
+  // Coba dapatkan dari tombol pagination terakhir
+  const paginationButtons = Array.from(document.querySelectorAll('button.css-bugrro-unf-pagination-item'))
+  const lastPageButton = paginationButtons[paginationButtons.length - 1]
+  if (lastPageButton?.textContent) {
+    const lastPage = parseInt(lastPageButton.textContent)
+    if (!isNaN(lastPage)) return lastPage
+  }
+
+  // Coba dapatkan dari informasi total review
+  const totalReviewElement = document.querySelector('[data-testid="lblTotalReview"]')
+  if (totalReviewElement) {
+    const totalReviewText = totalReviewElement.textContent || ''
+    const totalReview = parseInt(totalReviewText.replace(/\D/g, ''))
+    if (!isNaN(totalReview)) {
+      return Math.ceil(totalReview / 10) // 10 review per halaman
+    }
+  }
+
+  // Default ke 10 halaman jika tidak bisa mendapatkan total
+  return 10
 }
 
 // Fungsi utama untuk scraping semua review
 const scrapeAllReviews = async (): Promise<Review[]> => {
   const allReviews: Review[] = []
   const totalPages = getTotalPages()
+  let currentPage = 1
 
-  for (let i = 1; i <= totalPages; i++) {
-    console.log(`Mengambil data dari halaman ${i}...`)
-    await goToPage(i)
+  while (currentPage <= totalPages) {
+    console.log(`Mengambil data dari halaman ${currentPage}...`)
     
     // Tunggu hingga konten review dimuat
     await new Promise((resolve) => {
@@ -496,8 +583,19 @@ const scrapeAllReviews = async (): Promise<Review[]> => {
     const pageReviews = await scrapeReviews()
     allReviews.push(...pageReviews)
 
-    // Tunggu sebentar sebelum ke halaman berikutnya
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Cek apakah masih ada halaman berikutnya
+    if (currentPage < totalPages) {
+      const success = await goToPage(currentPage + 1, currentPage)
+      if (!success) {
+        console.log('Tidak dapat menavigasi ke halaman berikutnya')
+        break
+      }
+      currentPage++
+      // Tunggu sebentar sebelum ke halaman berikutnya
+      await new Promise(resolve => setTimeout(resolve, 1500))
+    } else {
+      break
+    }
   }
 
   return allReviews
