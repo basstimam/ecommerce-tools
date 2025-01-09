@@ -393,3 +393,124 @@ observer.observe(document.body, {
   childList: true,
   subtree: true
 }) 
+
+interface Review {
+  text: string
+  kendala?: string
+}
+
+// Fungsi untuk mengambil review dari Tokopedia
+const scrapeReviews = async (): Promise<Review[]> => {
+  const uniqueReviews = new Map<string, Review>()
+  
+  // Mengambil review dan kendala
+  const reviewElements = document.querySelectorAll('span[data-testid="lblItemUlasan"]')
+  reviewElements.forEach((reviewElement) => {
+    const reviewText = reviewElement.textContent?.trim()
+    if (reviewText) {
+      // Mencari elemen kendala terdekat
+      const reviewContainer = reviewElement.closest('article')
+      let kendala = ''
+      
+      if (reviewContainer) {
+        // Mencoba mencari kendala dengan berbagai selector
+        const kendalaElement = reviewContainer.querySelector('p[data-unify="Typography"].css-zhjnk4-unf-heading') ||
+                              reviewContainer.querySelector('div[data-testid="divKendala"] p')
+        
+        // Jika tidak ditemukan dengan querySelector, coba dengan XPath
+        if (!kendalaElement) {
+          const xpathResult = document.evaluate(
+            './/p[contains(text(), "Kendala:")]',
+            reviewContainer,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+            null
+          )
+          const xpathElement = xpathResult.singleNodeValue as HTMLElement
+          if (xpathElement) {
+            kendala = xpathElement.textContent?.replace('Kendala:', '').trim() || ''
+          }
+        } else {
+          kendala = kendalaElement.textContent?.replace('Kendala:', '').trim() || ''
+        }
+      }
+
+      uniqueReviews.set(reviewText, {
+        text: reviewText,
+        kendala: kendala || undefined
+      })
+    }
+  })
+
+  return Array.from(uniqueReviews.values())
+}
+
+// Fungsi untuk mengklik tombol pagination
+const goToPage = async (pageNumber: number): Promise<void> => {
+  const buttons = document.querySelectorAll('button.css-bugrro-unf-pagination-item')
+  let found = false
+  buttons.forEach(button => {
+    if (button.textContent?.trim() === pageNumber.toString()) {
+      (button as HTMLButtonElement).click()
+      found = true
+    }
+  })
+  if (!found) {
+    console.error(`Tombol untuk halaman ${pageNumber} tidak ditemukan.`)
+  }
+}
+
+// Fungsi untuk mendapatkan total halaman
+const getTotalPages = (): number => {
+  const paginationButtons = document.querySelectorAll('button.css-bugrro-unf-pagination-item')
+  return paginationButtons.length
+}
+
+// Fungsi utama untuk scraping semua review
+const scrapeAllReviews = async (): Promise<Review[]> => {
+  const allReviews: Review[] = []
+  const totalPages = getTotalPages()
+
+  for (let i = 1; i <= totalPages; i++) {
+    console.log(`Mengambil data dari halaman ${i}...`)
+    await goToPage(i)
+    
+    // Tunggu hingga konten review dimuat
+    await new Promise((resolve) => {
+      const observer = new MutationObserver((mutationsList, observer) => {
+        const reviewsLoaded = document.querySelectorAll('span[data-testid="lblItemUlasan"]').length > 0
+        if (reviewsLoaded) {
+          observer.disconnect()
+          resolve(true)
+        }
+      })
+      
+      const targetNode = document.querySelector('div[data-testid="divReviewList"]')
+      if (targetNode) {
+        observer.observe(targetNode, { childList: true, subtree: true })
+      } else {
+        resolve(true)
+      }
+    })
+
+    const pageReviews = await scrapeReviews()
+    allReviews.push(...pageReviews)
+
+    // Tunggu sebentar sebelum ke halaman berikutnya
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+
+  return allReviews
+}
+
+// Menambahkan listener untuk pesan dari popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "ANALYZE_REVIEWS") {
+    scrapeAllReviews().then(reviews => {
+      sendResponse({ reviews })
+    })
+    return true
+  }
+  // ... existing code ...
+})
+

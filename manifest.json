@@ -1,23 +1,28 @@
 {
   "manifest_version": 3,
-  "name": "Salary Input Extension",
+  "name": "Ecommerce Tools",
   "version": "1.0.0",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "background": {
     "service_worker": "background.ts"
   },
   "host_permissions": [
-    "https://www.tokopedia.com/*"
+    "https://www.tokopedia.com/*",
+    "https://shopee.co.id/*"
   ],
   "action": {
     "default_popup": "popup.tsx"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.tokopedia.com/*"],
+      "matches": [
+        "https://www.tokopedia.com/*",
+        "https://shopee.co.id/*"
+      ],
       "js": ["content.ts"]
     }
   ]
