@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface ReviewAnalysisResult {
   text: string
@@ -15,8 +15,186 @@ interface ReviewAnalyzerProps {
   results: ReviewAnalysisResult[]
 }
 
+interface StoredState {
+  activeTab: 'summary' | 'negative'
+  results: ReviewAnalysisResult[]
+  isAnalyzing: boolean
+  lastUpdated: number
+  currentPage?: number
+  totalPages?: number
+}
+
 export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzerProps) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'negative'>('summary')
+  const [isInitialized, setIsInitialized] = useState<boolean>(false)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [totalPages, setTotalPages] = useState<number>(0)
+
+  // Fungsi untuk mencoba melanjutkan scraping
+  const attemptContinueScraping = async () => {
+    try {
+      // Coba temukan tombol next page dengan berbagai selector
+      const nextPageSelectors = [
+        'button[aria-label="Laman berikutnya"]',
+        '.css-16uzo3v-unf-pagination-item',
+        '//button[contains(@class, "css-16uzo3v-unf-pagination-item")]',
+        '//html/body/div[1]/div/div[2]/div[2]/div[13]/div/div/section/div[3]/nav/ul/li[11]/button'
+      ]
+
+      let nextPageButton: Element | null = null
+
+      // Coba setiap selector sampai menemukan tombol
+      for (const selector of nextPageSelectors) {
+        if (selector.startsWith('//')) {
+          // Gunakan XPath jika selector dimulai dengan //
+          const result = document.evaluate(
+            selector,
+            document,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+            null
+          )
+          nextPageButton = result.singleNodeValue as Element
+        } else {
+          nextPageButton = document.querySelector(selector)
+        }
+        
+        if (nextPageButton) break
+      }
+
+      if (nextPageButton && !nextPageButton.hasAttribute('disabled')) {
+        console.log('Menemukan tombol next page, melanjutkan scraping...')
+        ;(nextPageButton as HTMLButtonElement).click()
+        
+        // Update dan simpan state halaman
+        const newPage = currentPage + 1
+        setCurrentPage(newPage)
+        saveStateToStorage({ 
+          currentPage: newPage,
+          isAnalyzing: true 
+        })
+        
+        // Lanjutkan analisis
+        await onAnalyze()
+        return true
+      }
+      
+      return false
+    } catch (error) {
+      console.error('Gagal melanjutkan scraping:', error)
+      return false
+    }
+  }
+
+  // Fungsi untuk menyimpan state ke storage
+  const saveStateToStorage = async (state: Partial<StoredState>) => {
+    try {
+      await chrome.storage.local.set({
+        reviewAnalyzer: {
+          activeTab: state.activeTab || activeTab,
+          results: state.results || results,
+          isAnalyzing: state.isAnalyzing || isLoading,
+          currentPage: state.currentPage || currentPage,
+          totalPages: state.totalPages || totalPages,
+          lastUpdated: Date.now()
+        }
+      })
+      console.log('State berhasil disimpan ke storage')
+    } catch (error) {
+      console.error('Gagal menyimpan state:', error)
+    }
+  }
+
+  // Fungsi untuk memulihkan state dari storage
+  const restoreStateFromStorage = async () => {
+    try {
+      const stored = await chrome.storage.local.get('reviewAnalyzer')
+      if (stored.reviewAnalyzer) {
+        const { 
+          activeTab: storedTab, 
+          results: storedResults, 
+          isAnalyzing,
+          currentPage: storedPage,
+          totalPages: storedTotalPages
+        } = stored.reviewAnalyzer
+        
+        // Hanya pulihkan state jika data tersimpan kurang dari 1 jam
+        const oneHour = 60 * 60 * 1000
+        if (Date.now() - stored.reviewAnalyzer.lastUpdated < oneHour) {
+          setActiveTab(storedTab)
+          if (storedPage) setCurrentPage(storedPage)
+          if (storedTotalPages) setTotalPages(storedTotalPages)
+          
+          if (isAnalyzing && !isLoading) {
+            // Coba lanjutkan scraping jika sebelumnya sedang berjalan
+            const continued = await attemptContinueScraping()
+            if (!continued) {
+              console.log('Tidak dapat melanjutkan scraping, memulai dari awal')
+              onAnalyze()
+            }
+          }
+          console.log('State berhasil dipulihkan dari storage')
+        } else {
+          // Hapus data lama dari storage
+          await chrome.storage.local.remove('reviewAnalyzer')
+          console.log('Data storage kadaluarsa, memulai dari awal')
+        }
+      }
+    } catch (error) {
+      console.error('Gagal memulihkan state:', error)
+    }
+  }
+
+  // Lifecycle untuk inisialisasi komponen dan memulihkan state
+  useEffect(() => {
+    const initializeComponent = async () => {
+      try {
+        await restoreStateFromStorage()
+        setIsInitialized(true)
+        console.log('ReviewAnalyzer component initialized')
+      } catch (error) {
+        console.error('Error initializing ReviewAnalyzer:', error)
+      }
+    }
+
+    initializeComponent()
+
+    // Cleanup function saat komponen unmount
+    return () => {
+      saveStateToStorage({ isAnalyzing: false })
+      setIsInitialized(false)
+      console.log('ReviewAnalyzer component unmounted')
+    }
+  }, [])
+
+  // Lifecycle untuk memantau dan menyimpan perubahan results
+  useEffect(() => {
+    if (results.length > 0) {
+      saveStateToStorage({ results })
+      console.log('New review results received and saved:', results.length, 'reviews')
+    }
+  }, [results])
+
+  // Lifecycle untuk memantau dan menyimpan perubahan tab
+  useEffect(() => {
+    saveStateToStorage({ activeTab })
+    console.log('Active tab changed and saved:', activeTab)
+  }, [activeTab])
+
+  // Lifecycle untuk memantau status loading
+  useEffect(() => {
+    saveStateToStorage({ 
+      isAnalyzing: isLoading,
+      currentPage,
+      totalPages 
+    })
+    console.log('Analysis status changed:', isLoading ? 'analyzing' : 'idle')
+    
+    // Jika loading berhenti dan masih ada halaman yang belum di-scrape
+    if (!isLoading && currentPage < totalPages) {
+      attemptContinueScraping()
+    }
+  }, [isLoading])
 
   const getSentimentEmoji = (score: number) => {
     if (score > 0) return "😊"
@@ -42,15 +220,11 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
     const positivePercentage = (positiveCount / results.length) * 100
     const highPositiveCount = results.filter(r => r.score > 2).length
     const highPositivePercentage = (highPositiveCount / results.length) * 100
-    
-    // Menghitung rasio positif vs negatif
     const positiveToNegativeRatio = negativeCount === 0 ? positiveCount : positiveCount / negativeCount
     
-    // Mengumpulkan pro dan kontra
     const pros: string[] = []
     const cons: string[] = []
 
-    // Analisis kendala yang sering muncul
     const kendalaMap = new Map<string, number>()
     results.forEach(review => {
       if (review.kendala) {
@@ -58,13 +232,11 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
       }
     })
 
-    // Menentukan kendala yang sering muncul (muncul lebih dari sekali)
     const commonIssues = Array.from(kendalaMap.entries())
       .filter(([_, count]) => count > 1)
       .sort((a, b) => b[1] - a[1])
       .map(([kendala]) => kendala)
 
-    // Menentukan pro dan kontra
     if (positiveToNegativeRatio >= 2) {
       pros.push("Review positif 2x lebih banyak dari negatif")
     }
@@ -96,11 +268,9 @@ export const ReviewAnalyzer = ({ onAnalyze, isLoading, results }: ReviewAnalyzer
       }
     }
 
-    // Menentukan rekomendasi berdasarkan rasio dan persentase
     let recommendation: string
     let recommendationColor: string
     
-    // Logika rekomendasi baru berdasarkan rasio dan persentase
     if (positiveToNegativeRatio >= 3 || positivePercentage >= 80 || highPositivePercentage >= 30) {
       recommendation = "Sangat Direkomendasikan"
       recommendationColor = "text-green-600"
