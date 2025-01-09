@@ -10,6 +10,7 @@
 ## Website Supports
 
 - Tokopedia
+- Shopee
 
 ## Features
 
@@ -43,16 +44,6 @@ For development mode:
 npm run dev
 ```
 
-## Project Structure
-
-```
-├── src/
-│   ├── components/
-│   ├── hooks/
-│   ├── lib/
-│   ├── popup.tsx
-│   └── content.ts
-```
 
 ## Contributing
 

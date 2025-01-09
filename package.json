@@ -1,7 +1,7 @@
 {
   "name": "ecommerce-tools",
   "displayName": "Smart Shopping Assistant",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A smart browser extension that helps you make better online shopping decisions with salary calculator and other shopping utilities",
   "author": "<basstimam>",
   "scripts": {
